@@ -1,0 +1,26 @@
+﻿@page "/ReadMeFirst"
+
+@* ReadMeFirst.razor *@
+<div class="p-3 border rounded bg-body-tertiary"  >
+    <h4>Here are some basic instructions to help you get started:</h4>
+
+    <ul>
+        <li> This app is able to identify which task you are currently working on and log hours to it(up to 8 per day)!</li>
+        <li>
+            <strong>Important:</strong> It is mandatory for the new users to manually turn your current working task to "InProgress" (or the corresponding status of your team),
+            after that the app will track your new tasks on it's own.
+        </li>
+        <li>
+            The automation works by checking your latest timelog to see if the task is still ("In Progress" - the corresponding status of your team)
+            and then it has a demi-Log on app's database, after 16:00 another automation checks the logs on the database and inputs hours on Wrike depending on what he finds
+            minus the hours you manually might have registered to wrike.
+        </li>
+        <li>
+            The current version of the application is not able to identify each user's time off or holidays yet!!(its work in progress),
+            if the stage's server is up so is the app(weekends are excluded !!).
+        </li>
+    </ul>
+
+    <p>If you have any questions, please refer to either <strong>Alexandros Tselios</strong> or <strong>Nondas Kyriazis</strong>.</p>
+</div>
+

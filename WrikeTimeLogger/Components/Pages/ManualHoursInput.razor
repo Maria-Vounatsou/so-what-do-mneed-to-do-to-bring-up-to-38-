@@ -1,0 +1,71 @@
+﻿@page "/manualhoursinput"
+@using WrikeTimeLogger.Models
+@using WrikeTimeLogger.Services
+@inject WrikeService wrikeService;
+@inject NavigationManager Navigation;
+@inject IDbContextFactory<AppDbContext> ContextFactory;
+@inject ILogger<ActiveTasks> Logger
+
+<h4 class="mb-3">You selected <strong>@title</strong> how many hours would you like to add on this task:</h4>
+<div class="form-group mb-3">
+    <label for="hoursInput" class="form-label">Enter Hours</label>
+    <InputNumber id="hoursInput" TValue="double" @bind-Value="@hours" class="form-control" EnableMinMax="true" min="0.10" max="8" placeholder="Enter Hours" />
+    <span class="form-text">Enter the number of hours (between 0.10 and 8).</span>
+</div>
+<button class="btn btn-success" @onclick="ConfirmManual">Confirm</button>
+<button class="btn btn-danger" @onclick="Cancel">Cancel</button>
+
+
+
+@code {
+    private double hours;
+    private string? title;
+    [CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+    private string? userId;
+    private string? accessToken;
+    [Parameter] public WrikeTask? Row { get; set; }
+    [CascadingParameter] BlazoredModalInstance BlazoredModal { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync() 
+    {
+        var authState = await AuthStat;
+        var user = authState.User;
+        userId = user.Identity!.Name;
+        title = Row!.title;
+    }
+
+
+    public async Task ConfirmManual()
+    {
+        try
+        {
+            using (var appDbContext = ContextFactory.CreateDbContext())
+            {
+                var userDb = await appDbContext.Users.Where(x => x.WrikeId == userId).FirstOrDefaultAsync();
+                accessToken = await wrikeService.EnsureValidAccessTokenAsync(userDb!.AccessToken, userId!);
+                var taskId = Row!.id;
+                await wrikeService.LogTimeAsync(accessToken, taskId, hours, DateTime.UtcNow.ToString("yyyy-MM-dd"));
+
+                if (!appDbContext.UsersTasks.Any(x => x.TaskId == taskId && x.UserId == userId))
+                {
+                    appDbContext.UsersTasks.Add(new UsersTasks
+                        {
+                            TaskId = taskId,
+                            UserId = userId!,
+                            Status = Row.status,
+                            Workflow = WrikeService.WorkflowsIds.Where(w => w.Key == Row.customStatusId).FirstOrDefault().Value.workflowName,
+                        });
+                    await appDbContext.SaveChangesAsync();
+                }
+            }
+            await BlazoredModal.CloseAsync(ModalResult.Ok($"Hours: {hours} added successfully on: {title}"));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error while confirming manual hours input");
+        }
+
+    }
+
+    private async Task Cancel() => await BlazoredModal.CancelAsync();
+}

@@ -1,0 +1,27 @@
+﻿<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+
+   
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="WrikeTimeLogger.styles.css" />
+    <link rel="icon" type="image/ico" href="favicon.ico" />
+    <HeadOutlet @rendermode=componentRenderMode />
+    
+</head>
+
+<body>
+    <Routes @rendermode=componentRenderMode />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+
+</html>
+
+@code{
+    IComponentRenderMode componentRenderMode = new InteractiveServerRenderMode(false);
+}

@@ -1,0 +1,246 @@
+﻿@page "/logs"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Logging
+@using WrikeTimeLogger.Data
+@using WrikeTimeLogger.Models
+@inject IDbContextFactory<AppDbContext> ContextFactory
+@inject IJSRuntime JSRuntime
+
+<AuthorizeView Roles="Admin">
+@if (_logs is not null)
+{
+    <div style="word-break: break-word;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 style="font-weight:bold">Log Viewer</h2>
+            <div>
+                <button @onclick="_ => showFilters = !showFilters" class="btn btn-primary">
+                    <i class="fa fa-filter"></i> Filters
+                </button>
+            </div>
+        </div>
+
+        <div class="border mb-4 @(showFilters ? "" : "d-none") p-3">
+            <div class="row">
+
+                <div class="col-md-4 mb-3">
+                    <label>User</label>
+                    <InputText class="form-control" @bind-Value="filters.WrikeId" @bind-Value:after="ResetPageAndLoadLogsAsync" />
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label>Level</label>
+                    <InputSelect class="form-control" @bind-Value="filters!.LogLevel" @bind-Value:after="ResetPageAndLoadLogsAsync">
+                        <option value="">All</option>
+                        <option value="0">Trace</option>
+                        <option value="1">Debug</option>
+                        <option value="2">Information</option>
+                        <option value="3">Warning</option>
+                        <option value="4">Error</option>
+                        <option value="5">Critical</option>
+                    </InputSelect>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label>Message</label>
+                        <InputText class="form-control" @bind-Value="filters.Template" @bind-Value:after="ResetPageAndLoadLogsAsync" />
+                </div>
+            </div>
+        </div>
+
+        <table class="table table-hover table-striped">
+            <thead class="thead-dark">
+                <tr>
+                    <th width="10%">Time</th>
+                    <th width="10%">User</th>
+                    <th width="10%">Log Level</th>
+                    <th width="20%">Message</th>
+                    <th width="30%">Exception</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var log in _logs)
+                {
+                    <tr>
+                        <td>@log.CreatedAt.ToLocalTime()</td>
+                        <td>@log.WrikeId</td>
+                        <td><span class="badge rounded-pill @(GetLogLevelClass(log.LogLevel))">@log.LogLevel</span></td>
+                        <td>@log.Template</td>
+                         <td>
+                            <div>
+
+                                @if (!expandedExceptions.ContainsKey(log.Id) || !expandedExceptions[log.Id])
+                                {
+                                    <div class="text-truncate" style="max-width: 400px;">
+                                        @log.Exception
+                                    </div>
+                                }
+
+                                <button class="btn btn-link p-0" type="button" @onclick="() => ToggleException(log.Id)">
+                                    @if (expandedExceptions.ContainsKey(log.Id) && expandedExceptions[log.Id])
+                                    {
+                                        <i class="angle-up">View Less</i>
+                                    }
+                                    else
+                                    {
+                                        <i class="angle-down">View More</i>
+                                    }
+                                </button>
+
+                                @if (expandedExceptions.ContainsKey(log.Id) && expandedExceptions[log.Id])
+                                {
+                                    <div class="mt-2">
+                                        @log.Exception
+                                    </div>
+                                }
+                            </div>
+                        </td>
+                        <td>@log.SourceContext</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <div class="d-flex gap-2 align-items-center ">
+                <label class="text-nowrap" >Rows per page:</label>
+                <InputSelect @bind-Value="Take" class="form-control form-control-sm" @bind-Value:after="Service">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="40">40</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </InputSelect>
+            </div>
+
+            <div class="d-flex align-items-center">
+                <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(Offset == 0)" @onclick="PreviousPage">
+                    <i class="fa fa-angle-left"></i>
+                </button>
+                <span class="mx-3">@Offset - @(Offset + Take)</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="NextPage">
+                    <i class="fa fa-angle-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+</AuthorizeView>
+
+@code {
+    [Inject]
+    ILogger<DaPage> Logger { get; set;}
+
+    private Dictionary<int, bool> expandedExceptions = new Dictionary<int, bool>();
+
+
+    private int? Offset { get; set; } = 0;
+    private int? Take { get; set; } = 10;
+
+    bool showFilters = false;
+
+    LogFilters? filters = new();
+
+    List<ErrorLog>? _logs;
+
+    LogFilters? selectedLog;
+    private IJSObjectReference? module;
+
+    protected override Task OnInitializedAsync()
+    {
+        return Service();
+
+    }
+
+    private async Task Service()
+    {
+        try
+        {
+            using var appDbContext = ContextFactory.CreateDbContext();
+            IQueryable<ErrorLog> query = appDbContext.ErrorLogs
+                .AsNoTracking()
+                .OrderByDescending(e => e.Id);
+
+            if (!string.IsNullOrEmpty(filters!.WrikeId))
+            {
+                query = query.Where(e => e.WrikeId == filters.WrikeId);
+            }
+            if (!string.IsNullOrEmpty(filters.Template))
+            {
+                query = query.Where(e => e.Template.Contains(filters.Template));
+            }
+            if (filters is { LogLevel: >= 0 and < 6 })
+            {
+                query = query.Where(e => (int)e.LogLevel == filters.LogLevel);
+            }
+
+            query = query
+               .OrderByDescending(e => e.Id) 
+               .Skip(Offset ?? 0)
+               .Take(Take ?? 10);
+
+
+            var logs = await query
+                .ToListAsync();
+
+            _logs = logs;
+            GoToTop();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading logs");
+        }
+    }
+
+
+    private Task ResetPageAndLoadLogsAsync()
+    {
+        Offset = 0;
+        Take = 10;
+
+        return Service();
+    }
+
+    private string GetLogLevelClass(LogLevel level) => level switch
+    {
+        LogLevel.Information => "bg-info",
+        LogLevel.Warning => "bg-warning",
+        LogLevel.Error or LogLevel.Critical => "bg-danger",
+        _ => "bg-secondary",
+    };
+
+    private Task NextPage()
+    {
+        Offset += Take;
+        return Service();
+    }
+
+
+    private Task PreviousPage()
+    {
+        Offset -= Take;
+        if (Offset < 0) Offset = 0;
+
+        return Service();
+    }
+
+    private void ToggleException(int logId)
+    {
+        if (expandedExceptions.ContainsKey(logId))
+        {
+            expandedExceptions[logId] = !expandedExceptions[logId];
+        }
+        else
+        {
+            expandedExceptions[logId] = true;
+        }
+    }
+
+    private async void GoToTop()
+    {
+        module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "../Javascript.js");
+        await module.InvokeVoidAsync("onScrollEvent");
+    }
+} 

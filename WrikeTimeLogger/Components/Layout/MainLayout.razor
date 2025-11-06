@@ -1,0 +1,66 @@
+﻿@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@attribute [Authorize]
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page">
+            <div class="sidebar">
+                <NavMenu />
+            </div>
+
+            <main>
+                <div class="top-row px-4">
+                    <h5>@Actor</h5>
+                    <button @onclick="ThemeMore" style="margin:0px 0px 8px 10px; border: 1px solid var(--bs-border-color)" class="btn px-2"> <i id="themeBtn" class="fa solid fa-sun"></i></button>
+
+                </div>
+
+                <article class="content px-4">
+                    @Body
+                </article>
+
+
+            </main>
+        </div>
+
+        <div id="blazor-error-ui">
+            An unhandled error has occurred.
+            <a href="" class="reload">Reload</a>
+            <a class="dismiss">🗙</a>
+        </div>
+</Authorized>
+<NotAuthorized>
+    <RedirectToLoggin />
+</NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string? Actor;
+    private IJSObjectReference? module;
+    [CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+
+    protected async override Task OnInitializedAsync()
+    {
+        {
+            var user = (await AuthStat).User;
+
+            if (!user.Identity.IsAuthenticated)
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+            Actor = user.FindFirstValue(ClaimTypes.GivenName);
+        }
+    }
+
+    private async void ThemeMore()
+    {
+        module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "../Javascript.js");
+        await module.InvokeVoidAsync("toggleTheme");
+    }
+}
+
+

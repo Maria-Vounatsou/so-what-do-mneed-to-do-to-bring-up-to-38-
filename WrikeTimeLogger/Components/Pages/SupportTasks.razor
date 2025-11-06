@@ -1,0 +1,87 @@
+﻿@page "/support-tasks"
+@using WrikeTimeLogger.Data
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ILogger<SupportTasks> Logger
+
+<h3 class="mb-4">Support Tasks</h3>
+
+<button class="btn btn-sm btn-primary mb-3" @onclick="Load">Refresh</button>
+
+@if (rows is null)
+{
+    <p>Loading…</p>
+}
+else if (rows.Count == 0)
+{
+    <p>No rows yet.</p>
+}
+else
+{
+    <table class="table table-sm table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>TaskId</th>
+                <th>Title</th>
+                <th>Team</th>
+                <th>Completed</th>
+                <th>Updated</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in rows)
+            {
+                var link = string.IsNullOrEmpty(r.Link)
+                ? $"https://www.wrike.com/open.htm?id={r.TaskId}"
+                : r.Link;
+
+                <tr>
+                    <td>@r.Id</td>
+                    <td>
+                        <a href="@link" target="_blank" rel="noopener">@r.TaskId</a>
+                    </td>
+                    <td>@r.Title</td>
+                    <td>@(string.IsNullOrWhiteSpace(r.TeamName) ? "—" : r.TeamName)</td>
+                    <td>@(r.Completed ? "Yes" : "No")</td>
+                    <td>@r.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary"
+                                @onclick="@(() => ToggleCompleted(r))">
+                            Toggle Complete
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<SupportTask>? rows;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        rows = await db.SupportTasks
+            .OrderByDescending(t => t.UpdatedAt)
+            .AsNoTracking()
+            .ToListAsync();
+        StateHasChanged();
+    }
+
+    private async Task ToggleCompleted(SupportTask r)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.SupportTasks.FindAsync(r.Id);
+        if (row is null) return;
+
+        row.Completed = !row.Completed;
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        await Load();
+    }
+}

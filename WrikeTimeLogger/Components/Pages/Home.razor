@@ -1,0 +1,105 @@
+﻿@page "/"
+@using System.Security.Claims
+@using WrikeTimeLogger.Models
+@inject WrikeService WrikeService
+@inject NavigationManager Navigation
+@inject ILogger<Home> Logger
+@inject IDbContextFactory<AppDbContext> ContextFactory
+
+
+<PageTitle>Home</PageTitle>
+
+@if (isLoading)
+{
+    <p>Loading....</p>
+}
+else
+{
+    @if (isAuth)
+    {
+        <div>
+            <h1>Welcome @Actor 👋 </h1>
+            <br />
+
+            <ReadMeFirst />
+
+        </div>
+    }
+    else
+    {
+            <p>Click the button below to sign in with Wrike</p>
+        <a class="btn btn-primary" href="@WrikeService.GetAuthorizationUrl()">Sign In With Wrike</a> 
+    }
+}
+
+@code{
+    [CascadingParameter]protected Task<AuthenticationState> AuthStat { get; set; }
+    [Parameter] public bool isAuth { get; set; } = false;
+    [Parameter] public string? Actor { get; set; }
+    private User? check;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthStat).User;
+        try
+        {
+           
+            if (user.Identity!.IsAuthenticated)
+            {
+                using var appDbContext = ContextFactory.CreateDbContext();
+                check = await appDbContext.Users.Where(x => x.WrikeId == user.Identity!.Name).FirstOrDefaultAsync();
+                if (user.Identity!.IsAuthenticated && check != null)
+                {
+                    isAuth = true;
+                    //Navigation.NavigateTo("/Timelogs");
+                    Actor = user.FindFirstValue(ClaimTypes.GivenName);
+                }
+                else
+                {
+                    isAuth = false;
+                }
+
+
+                isLoading = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error initializing Home page for user {Actor!}");
+        }
+    }
+
+    // private void Clicked()
+    // {  
+    //     Navigation.NavigateTo("/Timelogs");    
+    // }
+
+    private async void toggle()
+    {
+        try
+        {
+            using var appDbContext = ContextFactory.CreateDbContext();
+            check!.IsEnabled = !check.IsEnabled;
+            appDbContext.Users.Update(check);
+            await appDbContext.SaveChangesAsync();
+        }catch(Exception ex)
+        {
+            Logger.LogError(ex, $"Error toggling automation for user {Actor!}");
+        }
+    }
+    // private async void ManualLogout() 
+    // {
+    //     try
+    //     {
+    //         // Navigation.NavigateTo($"{WrikeService.GetAuthorizationUrl()}");
+    //         Navigation.NavigateTo("/logout");
+    //     }
+    //     catch(Exception ex)
+    //     {
+    //         Logger.LogError(ex, $"Error with the navigation for manual logout for the user {Actor!}");
+    //     }
+    // }
+
+
+}

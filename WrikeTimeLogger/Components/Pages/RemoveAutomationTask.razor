@@ -1,0 +1,54 @@
+﻿@page "/removeautomationtask";
+@using WrikeTimeLogger.Models;
+@using WrikeTimeLogger.Services;
+@inject IDbContextFactory<AppDbContext> ContextFactory
+@inject ILogger<RemoveAutomationTask> Logger
+
+<h4 class="mb-3">Would you like to remove automation for: <strong>@title</strong></h4>
+<button class="btn btn-success" @onclick="ConfirmRemoveAutomatedTask">Confirm</button>
+<button class="btn btn-danger" @onclick="Cancel">Cancel</button>
+
+
+
+@code {
+    [Parameter] public WrikeTask? Row { get; set; }
+    [CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+    private string? userId;
+    private string? accessToken;
+    private string? title;
+    [CascadingParameter] BlazoredModalInstance BlazoredModal { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStat;
+        var user = authState.User;
+        userId = user.Identity!.Name;
+        title = Row!.title;
+    }
+
+    public async Task ConfirmRemoveAutomatedTask()
+    {
+        try
+        {
+            using (var appDbContext = ContextFactory.CreateDbContext())
+            {
+                var automatedTaskInDb = await appDbContext.UsersTasks.Where(ut => ut.UserId == userId && ut.IsAutomated == true).FirstOrDefaultAsync();
+                {
+                    if (automatedTaskInDb != null)
+                    {
+                        automatedTaskInDb.IsAutomated = false;
+                    }
+                }
+                await appDbContext.SaveChangesAsync();
+            }
+            await BlazoredModal.CloseAsync(ModalResult.Ok($"Removed automation from: {title}"));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error while removing automated task");
+        }
+    }
+
+    private async Task Cancel() => await BlazoredModal.CancelAsync();
+
+}

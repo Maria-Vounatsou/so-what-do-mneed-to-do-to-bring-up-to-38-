@@ -1,0 +1,156 @@
+﻿@page "/AdminPage"
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Identity
+@using System.Text.Json
+@using System.Text
+@using Microsoft.Extensions.Logging
+@using WrikeTimeLogger.Data
+@using WrikeTimeLogger.Models
+@inject ILogger<Admin> Logger
+@inject IDbContextFactory<AppDbContext> ContextFactory
+@inject WrikeService WrikeService
+@inject NavigationManager NavigationManager
+
+<PageTitle>AdminPage</PageTitle>
+
+ <AuthorizeView Roles="Admin">
+@if (_users == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="alert alert-success">
+            <h3>Admin Page</h3>
+    </div>
+        <div class="alert alert-primary">
+        
+        <p><strong>Total number of Users:</strong>@TotalUsers</p>
+        <p><strong>Total number of Admins:</strong>@TotalAdmins</p>
+    </div>
+
+        <div class="card p-4 shadow-sm mb-4 ">
+        <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in _users)
+            {
+                <tr @key=user.Name>
+                    <td>@user.Name</td>
+                    <td>@user.Role</td>
+                    <td><button class="btn btn-primary" @onclick="() => ToggleUserRoleAsync(user)">Change Role</button></td>
+                </tr>
+                
+            }
+        </tbody>
+    </table>
+        </div>
+}
+
+  </AuthorizeView>
+  
+@code {
+    private List<User> _users;
+    private User? _selectedUser;
+    private int TotalUsers;
+    private int TotalAdmins;
+    [CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async void ToggleUserRoleAsync(User row)
+    {
+        try
+        {
+            using (var appDbContext = ContextFactory.CreateDbContext())
+            {
+                _selectedUser = row;
+                var roleChange = await appDbContext.Users.Where(x => x.WrikeId == _selectedUser.WrikeId).FirstOrDefaultAsync();
+
+                if (roleChange.Role == "Admin")
+                {
+                    roleChange.Role = "User";
+                }
+                else
+                {
+                    roleChange.Role = "Admin";
+                }
+                await appDbContext.SaveChangesAsync();
+            }
+            // NavigationManager.NavigateTo("/logout");
+        }catch(Exception ex)
+        {
+            Logger.LogError(ex, "Error toggling user role");
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        var user = (await AuthStat).User;
+        using var appDbContext = ContextFactory.CreateDbContext();
+        if(!user.Identity.IsAuthenticated){ return; }
+        try
+        {         
+            if (!user.IsInRole("Admin"))
+            {
+                //NavigationManager.NavigateTo($"{WrikeService.GetAuthorizationUrl()}");
+            }
+            else
+            {
+                _users = await appDbContext.Users.Where(x => x.WrikeId != null).ToListAsync();
+            }
+            TotalUsers = _users.Where(u=>u.Role!="Admin").Count();
+            TotalAdmins = _users.Where(u=>u.Role=="Admin").Count();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading users on the initialization of AdminComponent");
+        }
+    }
+
+    // var change = appDbContext.Users
+       // .Where(x => x.WrikeId == _selectedUser.WrikeId)
+       // .FirstOrDefault();
+       //  if (change.Role == "Admin")
+       //  {
+       //      change.Role = "User";
+       //  }
+       //  else
+       //  {
+       //      change.Role = "Admin";
+       //  }
+       //  appDbContext.SaveChanges();
+       //  var user = UserManager.FindByIdAsync(_selectedUser.WrikeId).Result;
+       //  if (user != null)
+       //  {
+       //      var isInRole = await UserManager.IsInRoleAsync(user, "Admin");
+
+       //      if (isInRole)
+       //      {
+       //          // Remove Admin role and add User role
+       //          await UserManager.RemoveFromRoleAsync(user, "Admin");
+       //          await UserManager.AddToRoleAsync(user, "User");
+       //      }
+       //      else
+       //      {
+       //          // Remove User role and add Admin role
+       //          await UserManager.RemoveFromRoleAsync(user, "User");
+       //          await UserManager.AddToRoleAsync(user, "Admin");
+       //      }
+
+       //      // Update security stamp (this forces re-authentication)
+       //      await UserManager.UpdateSecurityStampAsync(user);
+       //      // await SignInManager.RefreshSignInAsync(user);
+}
+
+

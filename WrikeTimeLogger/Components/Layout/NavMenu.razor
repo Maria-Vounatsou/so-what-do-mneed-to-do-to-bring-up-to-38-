@@ -1,0 +1,67 @@
+﻿<div class=" px-3 navbar navbar-dark mb-1" >
+    <div class="container-fluid">
+        <a class="navbar-brand mx-auto" href="">🦋 WrikeTimeLogger</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                @* class="bi bi-house-door-fill-nav-menu" *@           <span aria-hidden="true"></span> 🏡 Home
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="ActiveTasks">
+                @* class="bi bi-plus-square-fill-nav-menu" *@   <span aria-hidden="true"></span> 👀 Active Tasks
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="Timelogs">
+                @* class="bi bi-plus-square-fill-nav-menu"  *@  <span aria-hidden="true"></span> ⌛ Timelogs
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="TodaysInputs">
+                @* class="bi bi-list-nested-nav-menu" *@ <span aria-hidden="true"></span> 🔮 Todays Inputs
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="support-tasks">
+                <span aria-hidden="true"></span> 🗂️ Support Tasks
+            </NavLink>
+        </div>
+
+        <AuthorizeView Roles="Admin">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="logs">
+                    @* class="bi bi-list-nested-nav-menu" *@    <span aria-hidden="true"></span> 🪲 Logs
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="AdminPage">
+                    @* class="bi bi-list-nested-nav-menu" *@ <span aria-hidden="true"></span> 🛡️ Admin
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="Webhooks">
+                    @* class="bi bi-list-nested-nav-menu" *@ <span aria-hidden="true"></span> 🪝 Webhooks
+                </NavLink>
+            </div>
+
+@*             <div class="nav-item px-3">
+                <NavLink class="nav-link" href="support-tasks">
+                    <span aria-hidden="true"></span> 🗂️ Support Tasks
+                </NavLink>
+            </div> *@
+        </AuthorizeView>
+    </nav>
+</div>
+

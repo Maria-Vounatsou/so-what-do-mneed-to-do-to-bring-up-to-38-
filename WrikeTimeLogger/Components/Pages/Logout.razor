@@ -1,0 +1,97 @@
+﻿ @* @page "/logout"
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject LogoutService LogoutService
+@inject NavigationManager Navigation
+@inject ILogger<Logout> Logger
+@inject HttpContextAccessor HttpContextAccessor
+
+<h3>Logging out...</h3>
+
+
+@code {
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     try
+    //     {
+    //         // Some logic that may throw an error or indicate an invalid session
+    //         await LoadUserDataAsync();
+    //     }
+    //     catch (UnauthorizedAccessException ex)
+    //     {
+    //         // Log the error if necessary
+    //         Logger.LogError(ex, "User session invalid or expired. Logging out.");
+
+    //         // Automatically log out the user and redirect to login
+    //         await PerformAutomaticLogout();
+    //     }
+    // }
+
+    // private async Task PerformAutomaticLogout()
+    // {
+    //     var httpContext = HttpContextAccessor.HttpContext;
+
+    //     // Clear the authentication session and cookies
+    //     if (httpContext != null)
+    //     {
+    //         await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    //         httpContext.Response.Cookies.Delete(".AspNetCore.Identity.Application");
+    //     }
+
+    //     // Redirect to the login page automatically
+    //     Navigation.NavigateTo("/login", forceLoad: true);
+    // }
+} *@
+
+
+
+
+   
+@page "/logout"
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+@inject ILogger<Logout> Logger
+@inject WrikeService WrikeService
+
+<h3>Refresh the page to login again</h3>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {try
+        {
+            var context = HttpContextAccessor.HttpContext;
+            if (context != null)
+            {
+                // if (context.Request.Cookies.Count > 0)
+                // {
+                //     // Delete cookies related to authentication
+                //     var siteCookies = context.Request.Cookies
+                //         .Where(c => c.Key.Contains(".AspNetCore.") || c.Key.Contains("Microsoft.Authentication"))
+                //         .ToList();
+
+                //     foreach (var cookie in siteCookies)
+                //     {
+                //          context.Response.Cookies.Delete(cookie.Key);
+                //     }
+                // }
+                // await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme, new AuthenticationProperties
+                // {
+                //         RedirectUri = WrikeService.GetAuthorizationUrl()
+                        
+                // });
+                //await Task.Delay(500);
+
+            }
+        }catch(Exception ex)
+        {
+            Logger.LogError(ex, "Error logging out-logout.razor");
+        }
+
+        // Navigation.NavigateTo("/login");
+    }
+
+            // Navigate to login after logout completes
+            // Navigation.NavigateTo("/login", forceLoad: true);
+        }

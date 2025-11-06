@@ -1,0 +1,77 @@
+﻿@page "/selectautomationtask"
+@using WrikeTimeLogger.Models
+@using WrikeTimeLogger.Services
+@inject WrikeService wrikeService;
+@inject NavigationManager Navigation;
+@inject IDbContextFactory<AppDbContext> ContextFactory;
+@inject ILogger<ActiveTasks> Logger
+
+
+<h4 class="mb-3">Would you like to start automation for: <strong>@title</strong></h4>
+<button class="btn btn-success" @onclick="ConfirmAutomation">Confirm</button>
+<button class="btn btn-danger" @onclick="Cancel">Cancel</button>
+
+
+
+@code {
+    [Parameter] public WrikeTask? Row { get; set; }
+    [CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+    private string? userId;
+    private string? accessToken;
+    private string? title;
+    [CascadingParameter] BlazoredModalInstance BlazoredModal { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStat;
+        var user = authState.User;
+        userId = user.Identity!.Name;
+        title = Row!.title;
+    }
+
+    public async Task ConfirmAutomation()
+    {
+        try
+        {
+            using (var appDbContext = ContextFactory.CreateDbContext())
+            {
+                var user = await appDbContext.Users.Where(u => u.WrikeId == userId).FirstOrDefaultAsync();
+                var usersTasks = await appDbContext.UsersTasks.Where(ut => ut.UserId == userId).ToListAsync();
+                var automatedTaskInDb = usersTasks.Where(ut => ut.TaskId != Row!.id && ut.UserId == userId && ut.IsAutomated == true).FirstOrDefault();
+                {
+                    if (automatedTaskInDb != null)
+                    {
+                        automatedTaskInDb.IsAutomated = false;
+                    }
+                }
+                var taskInDb = usersTasks.Where(ut => ut.TaskId == Row!.id && ut.UserId == userId).FirstOrDefault();
+                if (taskInDb != null)
+                {
+                    taskInDb.IsAutomated = true;
+                }
+                else
+                {
+                    var accessToken = await wrikeService.EnsureValidAccessTokenAsync(user!.AccessToken, user.WrikeId);
+                    var wrikeTask = await wrikeService.GetTaskDetailsAsync(user!.AccessToken, Row!.id);
+
+                    appDbContext.UsersTasks.Add(new UsersTasks
+                        {
+                            TaskId = Row!.id,
+                            UserId = userId,
+                            Status = Row.status,
+                            Workflow = WrikeService.WorkflowsIds.Where(w => w.Key == wrikeTask.data[0].customStatusId).FirstOrDefault().Value.workflowName,
+                            IsAutomated = true
+                        });
+                }
+                await appDbContext.SaveChangesAsync();
+            }
+            await BlazoredModal.CloseAsync(ModalResult.Ok($"Automation started for: {title}"));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error while confirming automation hours input");
+        }
+    }
+    
+    private async Task Cancel() => await BlazoredModal.CancelAsync();
+}

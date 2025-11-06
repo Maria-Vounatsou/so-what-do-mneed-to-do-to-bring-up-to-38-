@@ -1,0 +1,126 @@
+﻿@page "/Webhooks"
+@inject WrikeService WrikeService
+@inject ILogger<Webhook> Logger
+@inject IDbContextFactory<AppDbContext> ContextFactory
+
+<PageTitle>Webhooks</PageTitle>
+<AuthorizeView Roles="Admin">
+
+<h3 class="mb-4">Webhooks</h3>
+
+
+@if (webhooks == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Events For</th>
+                <th>Url</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var webhook in webhooks)
+            {
+                <tr @key="webhook.id">
+                    <td>@webhook.id</td>
+                    <td>
+                        @if (webhook?.events != null && webhook.events.Any())
+                        {
+                            <p>@string.Join(", ", webhook.events)</p>
+                        }
+                    </td>
+                        <td>@webhook.hookUrl</td>
+                        <td>@webhook.status</td>
+                        <td>
+                        <button class="btn btn-outline-primary" @onclick="(() => DeleteWebhook(webhook.id))">
+                            Delete Webhook
+                        </button>
+                    </td>
+
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<div>
+    <button class="btn btn-primary" @onclick="CreateWebhook">Create Webhook</button>
+</div>
+</AuthorizeView>
+
+@code {
+    private List<Webhook.Datum>? webhooks = new List<Webhook.Datum>() ;
+    [CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+    private List<User>? DbUser;
+    private User? CurrentUser;
+
+    //TODO: Worker to ensure webhooks are always up to date
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var appDbContext = ContextFactory.CreateDbContext();
+        var user = (await AuthStat).User;
+        if(!user.Identity!.IsAuthenticated) return;
+        try
+        {
+            DbUser = await appDbContext.Users.Where(u => u.Role == "Admin").AsNoTracking().ToListAsync();
+            CurrentUser = DbUser.FirstOrDefault(u => u.WrikeId == user.Identity.Name);
+
+            foreach(var dbUser in DbUser)
+            {
+                if (!string.IsNullOrEmpty(dbUser.AccessToken))
+                {
+                    var accessToken = await WrikeService.EnsureValidAccessTokenAsync(dbUser.AccessToken, dbUser.WrikeId);
+                    var payload = await WrikeService.GetWebhooksAsync(accessToken);
+
+                    if (payload != null && payload.data.Count() > 0)
+                    {
+                        webhooks!.AddRange(payload.data.AsEnumerable());
+                    }
+                }
+            }
+        }
+        catch(Exception ex)
+        {
+            Logger.LogError(ex, $"Error initializing Webhooks page for user {user.Identity.Name}");
+        }
+    }
+
+    private async Task DeleteWebhook(string webhookId)
+    {
+        try
+        {
+            var accessToken = await WrikeService.EnsureValidAccessTokenAsync(CurrentUser!.AccessToken, CurrentUser.WrikeId);
+            await WrikeService.DeleteWebhookAsync(accessToken, webhookId);
+            webhooks = webhooks.Where(x => x.id != webhookId).ToList();
+        }
+        catch(Exception ex)
+        {
+            Logger.LogError(ex, $"Error deleting webhook {webhookId}");
+        }
+    }
+
+
+    private async Task CreateWebhook()
+    {
+        try
+        {
+            //TODO: MAYBE CHANGE THIS FOR AccessToken of ADMINS
+            var accessToken = await WrikeService.EnsureValidAccessTokenAsync(CurrentUser.AccessToken, CurrentUser.WrikeId);
+            await WrikeService.CreateWebhookAsync(accessToken);
+            var payload = await WrikeService.GetWebhooksAsync(accessToken);
+            webhooks = payload.data;
+        }
+        catch(Exception ex)
+        {
+            Logger.LogError(ex, "Error creating webhook");
+        }
+    }
+}

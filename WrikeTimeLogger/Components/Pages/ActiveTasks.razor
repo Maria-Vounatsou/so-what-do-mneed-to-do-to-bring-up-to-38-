@@ -1,0 +1,304 @@
+﻿@page "/ActiveTasks"
+@using System.Security.Claims
+@using WrikeTimeLogger.Models;
+@inject WrikeService wrikeService;
+@inject NavigationManager Navigation;
+@inject IDbContextFactory<AppDbContext> ContextFactory;
+@inject ILogger<ActiveTasks> Logger
+
+<PageTitle>Active Tasks</PageTitle>
+
+@if (@check != null)
+{
+    <div class="alert alert-primary" >
+        <h4>Click the button to toggle <strong>Automatic Timelogs</strong> On or Off
+            <div style="float:inline-end">
+            <span style=" color:@(check!.IsEnabled ? "green" : "red")">
+                @(check!.IsEnabled ? "Enabled" : "Disabled")      
+            </span>
+
+                <label class="switch">
+                    @if (check.IsEnabled == true)
+                    {
+                        <input type="checkbox" checked @onclick="toggle">
+                    }
+                    else
+                    {
+                        <input type="checkbox" @onclick="toggle">
+                    }
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </h4>
+    </div>
+}
+
+<div class="alert alert-success">
+    <span>Task that will automatically log hours:</span>
+    <span class="fw-bold" style="font-weight:bolder">@tasksTitleThatIsAutomated</span>
+</div>
+
+@if(!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-primary">
+        <span>@message</span>
+    </div>
+}
+
+<div class="card p-4 shadow-sm mb-4 ">
+    <div>
+        <h3 class="mb-4">Active Tasks</h3>
+
+        <div class="mb-4">
+            <div class="input-group">
+                <span class="input-group-text">Search Tasks</span>
+                <InputText @bind-Value="@searchTerm" class="form-control" placeholder="Filter by title..." @oninput="FilterTasks" />
+            </div>
+        </div>
+
+        @if (TaskResponses.Count() == 0)
+        {
+            <p><em>Loading...</em></p>
+        }
+        else
+        {
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Task Title</th>
+                        <th>Status</th>
+                        <th>Manual Action</th>
+                        <th>Automation Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in FilteredTasks)
+                    {
+                        <tr @key="task.id">
+                            <td class="text-wrap w-50">@task.title  </td>
+                            <td> <span style="color:@GetInProgressLevel(task.status)"> @task.status </span> </td>
+                            <td>
+                                <button class="btn btn-outline-primary" @onclick="(() => RowSelectedForManual(task))">
+                                    Select to Add Hours
+                                </button>
+                            </td>
+                            <td>
+                                @if (automatedTasksInDb != null && automatedTasksInDb.TaskId == task.id)
+                                {
+                                    <button class="btn btn-outline-danger" @onclick="(() => RowSelectedForRemoveAutomation(task))">
+                                        Select to Remove From Automation
+                                    </button>
+                                }
+                                else
+                                {
+                                <button class="btn btn-outline-primary" @onclick="(() => RowSelectedForAutomation(task))">
+                                    Select to Add For Automation
+                                </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private List<WrikeTask> TaskResponses = new List<WrikeTask>();
+    private string? tasksTitleThatIsAutomated;
+    [CascadingParameter] protected Task<AuthenticationState> AuthStat { get; set; }
+    private string? message;
+    private MarkupString formattedMessage;
+    private string? accessToken;
+    private string? refreshToken;
+    private WrikeTask? rowSelected;
+    private string? TextBoxValue;
+    private string? userId;
+    private double hours;
+    private string searchTerm = "";
+    private string? automationMessage;
+    private User? check;
+    private UsersTasks? automatedTasksInDb;
+    private string? ConfirmRemoveAutomation;
+    [CascadingParameter] public IModalService Modal { get; set; } = default!;
+
+    private IEnumerable<WrikeTask> FilteredTasks => TaskResponses
+       .Where(t => string.IsNullOrEmpty(searchTerm) || t.title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using (var appDbContext = ContextFactory.CreateDbContext())
+            {
+                var user = (await AuthStat).User;
+                if (!user.Identity!.IsAuthenticated)
+                {
+                    Navigation.NavigateTo("/login");
+                    return;
+                }
+                userId = user.Identity!.Name;
+                check = await appDbContext.Users.Where(x => x.WrikeId == userId).FirstOrDefaultAsync();
+                var userDb = check;
+
+                accessToken = await wrikeService.EnsureValidAccessTokenAsync(userDb!.AccessToken, userId);
+
+                if (userDb == null || string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(userDb.RefreshToken))
+                {
+                    Navigation.NavigateTo("/login");
+                    return;
+                }
+
+                var activeWrikeTasks = await wrikeService.GetActiveTasksAsync(accessToken, userId);
+                foreach (var task in activeWrikeTasks.data)
+                {
+                    task.status = WrikeService.WorkflowsIds.Where(x => x.Key == task.customStatusId).FirstOrDefault().Value?.customStatusName;
+                    if(task.status == null)
+                    {
+                        task.status = "Undefined";
+                    }
+                }
+
+                var latestHoursAddedOnDb = await appDbContext.HoursToAdd
+                    .Where(x => x.WrikeId == userDb.WrikeId)
+                    .OrderByDescending(x => x.DateIn)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync();
+
+                automatedTasksInDb = await appDbContext.UsersTasks.Where(ut => ut.UserId == userId && ut.IsAutomated == true).FirstOrDefaultAsync();
+                if (automatedTasksInDb != null)
+                {
+                    tasksTitleThatIsAutomated = activeWrikeTasks.data
+                        .FirstOrDefault(x => x.id == automatedTasksInDb.TaskId)?.title;
+                }
+                else if (latestHoursAddedOnDb != null)
+                {
+                    tasksTitleThatIsAutomated = activeWrikeTasks.data
+                         .FirstOrDefault(x => x.id == latestHoursAddedOnDb.TaskId)?.title;
+                }
+
+                TaskResponses = activeWrikeTasks.data.ToList();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error initializing ActiveTasks page ");
+        }
+    }
+
+    private async void toggle()
+    {
+        try
+        {
+            using var appDbContext = ContextFactory.CreateDbContext();
+            check!.IsEnabled = !check.IsEnabled;
+            appDbContext.Users.Update(check);
+            await appDbContext.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error toggling automation for user {userId!}");
+        }
+    }
+
+    public async void RowSelectedForManual(WrikeTask row)
+    {
+        var parameters = new ModalParameters()
+            .Add(nameof(ManualHoursInput.Row) ,row);
+
+        var modal = Modal.Show<ManualHoursInput>("Manual Hours Input", parameters , new ModalOptions
+        {
+            Position = ModalPosition.Middle,
+            HideHeader = true,
+        });
+
+        var result = await modal.Result;
+        if (result.Confirmed)
+        {
+            message = result.Data!.ToString();
+        }
+        await OnInitializedAsync();
+
+    }
+
+    public async Task RowSelectedForAutomation(WrikeTask row)
+    {
+        var parameters = new ModalParameters()
+            .Add(nameof(SelectAutomationTask.Row), row);
+
+        var modal = Modal.Show<SelectAutomationTask>("Select Automation Task", parameters, new ModalOptions
+        {
+            Position = ModalPosition.Middle,
+            HideHeader = true,
+
+        });
+
+        var result = await modal.Result;
+        if (result.Confirmed)
+        {
+            message = result.Data!.ToString();
+        }
+        await OnInitializedAsync();
+    }
+
+    public async Task RowSelectedForRemoveAutomation(WrikeTask row)
+    {
+        var parameters = new ModalParameters()
+            .Add(nameof(RemoveAutomationTask.Row), row);
+
+        var modal = Modal.Show<RemoveAutomationTask>("Remove Automation Task", parameters, new ModalOptions
+        {
+            Position = ModalPosition.Middle,
+            HideHeader = true,
+        });
+
+        var result = await modal.Result;
+        if (result.Confirmed)
+        {
+            message = result.Data!.ToString();
+        }
+        await OnInitializedAsync();
+    }
+
+    public async Task permaLinkToWrike()
+    {
+        try
+        {
+            accessToken = await wrikeService.EnsureValidAccessTokenAsync(accessToken, userId);
+            var WrikeTaskFromLink = await wrikeService.GetTaskFromPermalink(accessToken, TextBoxValue);
+            if (WrikeTaskFromLink != null)
+            {
+                TaskResponses.AddRange(WrikeTaskFromLink.data);
+            }
+            await OnInitializedAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error while getting permalink from wrikeService");
+        }
+    }
+
+    private void FilterTasks(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+    }
+
+    internal static string GetInProgressLevel(string status) => status switch
+    {
+        "Active" => "#2196F3",
+        "Planning" => "#795548",
+        "In Progress" => "#FF9800",
+        "Development" => "#FF9800",
+        "Doing" => "#FF9800",
+        "Needs testing" => "#9C27B0",
+        "Needs Testing" => "#9C27B0",
+        "Testing" => "#CDDC39",
+        "Needs Review" => "#F44336",
+        "Ongoing" => "#FFEB3B",
+        "Completed" => "#C8E6C9",
+        "On Hold" => "#3F51B5",
+        "Cancelled" => "#9E9E9E",
+        _ => "#2196F3",
+    };
+}
